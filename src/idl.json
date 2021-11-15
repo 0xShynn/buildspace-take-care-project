@@ -24,7 +24,7 @@
       "args": []
     },
     {
-      "name": "addGif",
+      "name": "addQuote",
       "accounts": [
         {
           "name": "baseAccount",

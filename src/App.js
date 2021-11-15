@@ -4,12 +4,15 @@ import './App.css';
 import idl from './idl.json';
 import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
 import { Program, Provider, web3 } from '@project-serum/anchor';
+import kp from './keypair.json';
 
 // SystemProgram is a reference to the Solana runtime.
 const { SystemProgram, Keypair } = web3;
 
 // Create a keypair for the account that will hold the GIF data.
-let baseAccount = Keypair.generate();
+const arr = Object.values(kp._keypair.secretKey);
+const secret = new Uint8Array(arr);
+const baseAccount = web3.Keypair.fromSecretKey(secret);
 
 // Get our program's id from the IDL file.
 const programID = new PublicKey(idl.metadata.address);
@@ -74,10 +77,26 @@ const App = () => {
   );
 
   const sendQuote = async () => {
-    if (inputValue.length > 0) {
-      console.log('Quote link:', inputValue);
-    } else {
-      console.log('Empty input. Try again.');
+    if (inputValue.length === 0) {
+      console.log('No quote link given.');
+      return;
+    }
+    console.log('Quote link: ', inputValue);
+    try {
+      const provider = getProvider();
+      const program = new Program(idl, programID, provider);
+
+      await program.rpc.addQuote(inputValue, {
+        accounts: {
+          baseAccount: baseAccount.publicKey,
+          user: provider.wallet.publicKey,
+        },
+      });
+      console.log('Quote successfully sent to program', inputValue);
+
+      await getQuoteList();
+    } catch (error) {
+      console.log('Error sending quote:', error);
     }
   };
 
@@ -117,7 +136,7 @@ const App = () => {
             <div className="quote-grid">
               {quoteList.map((quote, index) => (
                 <div className="quote-item" key={index}>
-                  <img src={quote} alt={quote} />
+                  <img src={quote.quoteLink} alt={quote} />
                 </div>
               ))}
             </div>
