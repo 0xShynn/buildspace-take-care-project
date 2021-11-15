@@ -1,18 +1,30 @@
+import { useEffect, useState } from 'react';
 import twitterLogo from './assets/twitter-logo.svg';
 import './App.css';
-import { useEffect, useState } from 'react';
+import idl from './idl.json';
+import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
+import { Program, Provider, web3 } from '@project-serum/anchor';
+
+// SystemProgram is a reference to the Solana runtime.
+const { SystemProgram, Keypair } = web3;
+
+// Create a keypair for the account that will hold the GIF data.
+let baseAccount = Keypair.generate();
+
+// Get our program's id from the IDL file.
+const programID = new PublicKey(idl.metadata.address);
+
+// Set our network to devnet.
+const network = clusterApiUrl('devnet');
+
+// Controls how we want to acknowledge when a transaction is "done".
+const opts = {
+  preflightCommitment: 'processed',
+};
 
 // Constants
 const TWITTER_HANDLE = '_buildspace';
 const TWITTER_LINK = `https://twitter.com/${TWITTER_HANDLE}`;
-const TEST_QUOTESS = [
-  'https://i.ibb.co/z2m4j94/Image-about-quotes-in-w-o-r-d-s-by-i-m-p-e-r-f-e-c-t-i-o-n.png',
-  'https://i.ibb.co/888FWnC/image.png',
-  'https://i.ibb.co/n1fKrTP/image.jpg',
-  'https://i.ibb.co/Y2wmC9N/alishalopez.jpg',
-  'https://i.ibb.co/0rbsMmJ/Malorie-on-Twitter.jpg',
-  'https://i.ibb.co/nQf3rfS/Minimal-Classy.jpg',
-];
 
 const App = () => {
   const [walletAddress, setWalletAddress] = useState(null);
@@ -69,38 +81,105 @@ const App = () => {
     }
   };
 
-  const renderConnectedContainer = () => (
-    <div className="connected-container">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          sendQuote();
-        }}
-      >
-        <input
-          type="text"
-          placeholder="Enter quote link!"
-          value={inputValue}
-          onChange={onInputChange}
-        />
-        <button type="submit" className="cta-button submit-quote-button">
-          Submit
-        </button>
-      </form>
+  const renderConnectedContainer = () => {
+    if (quoteList === null) {
+      return (
+        <div className="connected-container">
+          <button
+            className="cta-button submit-gif-button"
+            onClick={createQuoteAccount}
+          >
+            Do One-Time Initialization For GIF Program Account
+          </button>
+        </div>
+      );
+    } else {
+      return (
+        <div className="connected-container">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              sendQuote();
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Enter quote link!"
+              value={inputValue}
+              onChange={onInputChange}
+            />
+            <button type="submit" className="cta-button submit-quote-button">
+              Submit
+            </button>
+          </form>
 
-      <div className="quote-grid">
-        {quoteList.map((quote) => (
-          <div className="quote-item" key={quote}>
-            <img src={quote} alt={quote} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+          {quoteList.length > 0 && (
+            <div className="quote-grid">
+              {quoteList.map((quote, index) => (
+                <div className="quote-item" key={index}>
+                  <img src={quote} alt={quote} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+  };
 
   const onInputChange = (event) => {
     const { value } = event.target;
     setInputValue(value);
+  };
+
+  const getProvider = () => {
+    const connection = new Connection(network, opts.preflightCommitment);
+    const provider = new Provider(
+      connection,
+      window.solana,
+      opts.preflightCommitment
+    );
+    return provider;
+  };
+
+  const createQuoteAccount = async () => {
+    try {
+      const provider = getProvider();
+      const program = new Program(idl, programID, provider);
+      console.log('ping');
+
+      await program.rpc.startStuffOff({
+        accounts: {
+          baseAccount: baseAccount.publicKey,
+          user: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        },
+        signers: [baseAccount],
+      });
+      console.log(
+        'Created a new BaseAccount w/ address:',
+        baseAccount.publicKey.toString()
+      );
+      await getQuoteList();
+    } catch (error) {
+      console.log('Error creating BaseAccount account:', error);
+    }
+  };
+
+  const getQuoteList = async () => {
+    try {
+      const provider = getProvider();
+      const program = new Program(idl, programID, provider);
+      const account = await program.account.baseAccount.fetch(
+        baseAccount.publicKey
+      );
+
+      console.log('Got the account', account);
+      setQuoteList(account.quoteList);
+    } catch (error) {
+      console.log('Error in getQuoteList: ', error);
+      setQuoteList(null);
+    }
   };
 
   useEffect(() => {
@@ -114,7 +193,7 @@ const App = () => {
   useEffect(() => {
     if (walletAddress) {
       console.log('Fetching Quote list...');
-      setQuoteList(TEST_QUOTESS);
+      getQuoteList();
     }
   }, [walletAddress]);
 
